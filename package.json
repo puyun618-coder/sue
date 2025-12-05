@@ -14,9 +14,20 @@
     "@mediapipe/tasks-vision": "0.10.9"
   },
   "overrides": {
-    "three": "^0.181.2"
+    "three": "^0.181.2",
+    "@react-three/drei": {
+      "three": "^0.181.2"
+    },
+    "@react-three/fiber": {
+      "three": "^0.181.2"
+    },
+    "three-stdlib": {
+      "three": "^0.181.2"
+    }
   },
   "resolutions": {
-    "three": "^0.181.2"
+    "three": "^0.181.2",
+    "@react-three/drei/three": "^0.181.2",
+    "@react-three/fiber/three": "^0.181.2"
   }
 }

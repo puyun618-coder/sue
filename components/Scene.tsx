@@ -1,5 +1,5 @@
 import React, { Suspense, useRef, useState, useEffect } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment, ContactShadows, Float, Stars } from '@react-three/drei';
 import { EffectComposer, Bloom, ToneMapping, Vignette } from '@react-three/postprocessing';
 import { ToneMappingMode } from 'postprocessing';
@@ -10,6 +10,7 @@ import Ornaments from './Ornaments';
 import Star from './Star';
 import Presents from './Presents';
 import Polaroids from './Polaroids';
+import Snow from './Snow';
 
 interface SceneProps {
   treeState: TreeState;
@@ -146,25 +147,75 @@ const CameraRig: React.FC<{ handPosition: HandPosition; children: React.ReactNod
   return <group ref={groupRef}>{children}</group>;
 };
 
+// Responsive Wrapper to handle sizing logic inside Canvas context
+const ResponsiveTreeWrapper: React.FC<{ treeState: TreeState; handPosition: HandPosition; photos: string[] }> = ({ treeState, handPosition, photos }) => {
+    const { viewport, size } = useThree();
+    const isMobile = size.width < 768;
+
+    // Approximate bounds of the tree group
+    const treeHeight = 15; // Foliage height ~12 + Star + Base
+    
+    // Calculate scale to fill ~85% of viewport height
+    let desiredScale = (viewport.height * 0.85) / treeHeight;
+    
+    // Position logic
+    // Mobile: Center vertically (0)
+    // Desktop: Shift down slightly (-2) to make it look grander/grounded
+    const positionY = isMobile ? 0 : -2;
+
+    return (
+        <CameraRig handPosition={handPosition}>
+            <group position={[0, positionY, 0]} scale={[desiredScale, desiredScale, desiredScale]}>
+                <Float speed={1} rotationIntensity={0.2} floatIntensity={0.2} floatingRange={[-0.2, 0.2]}>
+                    <Foliage treeState={treeState} />
+                    <Star treeState={treeState} />
+
+                    <Ornaments 
+                        treeState={treeState} 
+                        type="sphere" 
+                        count={300} 
+                        color="#FFD700" 
+                        scaleFactor={1.2}
+                    />
+                    <Ornaments 
+                        treeState={treeState} 
+                        type="box" 
+                        count={150} 
+                        color="#8B0000" 
+                        metalness={0.8}
+                        roughness={0.2}
+                    />
+                    <Ornaments 
+                        treeState={treeState} 
+                        type="sphere" 
+                        count={500} 
+                        color="#ffffff" 
+                        scaleFactor={0.3}
+                        metalness={0.5}
+                        roughness={0.1}
+                    />
+                    
+                    {/* User Photos as Polaroids */}
+                    <Polaroids photos={photos} treeState={treeState} />
+                </Float>
+
+                <Presents treeState={treeState} />
+
+                <ContactShadows 
+                    resolution={1024} 
+                    scale={50} 
+                    blur={3} 
+                    opacity={0.4} 
+                    far={10} 
+                    color="#001005" 
+                />
+            </group>
+        </CameraRig>
+    );
+};
+
 
 const Scene: React.FC<SceneProps> = ({ treeState, handPosition, photos }) => {
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
-
-  // Configuration for size and placement
-  // Desktop: Bigger tree (1.3x), shifted down (-2.5) to put base below UI
-  // Mobile: Vertically centered (0), fitted scale (0.85x)
-  const groupScale = isMobile ? 0.85 : 1.3;
-  const groupPosition: [number, number, number] = [0, isMobile ? 0 : -2.5, 0];
-
   return (
     <div className="w-full h-full relative bg-[#001005]">
       <Canvas
@@ -177,6 +228,9 @@ const Scene: React.FC<SceneProps> = ({ treeState, handPosition, photos }) => {
         
         <Suspense fallback={null}>
             <AuroraBackground />
+            
+            {/* Atmospheric Snow - Global */}
+            <Snow />
 
             <Environment preset="city" environmentIntensity={0.5} />
             <ambientLight intensity={0.4} color="#002010" />
@@ -191,56 +245,7 @@ const Scene: React.FC<SceneProps> = ({ treeState, handPosition, photos }) => {
             />
              <pointLight position={[-15, 5, -15]} intensity={5} color="#00ff9d" distance={50} />
 
-            <CameraRig handPosition={handPosition}>
-                <group position={groupPosition} scale={[groupScale, groupScale, groupScale]}>
-                    <Float speed={1} rotationIntensity={0.2} floatIntensity={0.2} floatingRange={[-0.2, 0.2]}>
-                        <Foliage treeState={treeState} />
-                        <Star treeState={treeState} />
-
-                        <Ornaments 
-                            treeState={treeState} 
-                            type="sphere" 
-                            count={300} 
-                            color="#FFD700" 
-                            scaleFactor={1.2}
-                            weight={1.0}
-                        />
-                        <Ornaments 
-                            treeState={treeState} 
-                            type="box" 
-                            count={150} 
-                            color="#8B0000" 
-                            metalness={0.8}
-                            roughness={0.2}
-                            weight={2.0}
-                        />
-                        <Ornaments 
-                            treeState={treeState} 
-                            type="sphere" 
-                            count={500} 
-                            color="#ffffff" 
-                            scaleFactor={0.3}
-                            metalness={0.5}
-                            roughness={0.1}
-                            weight={0.2}
-                        />
-                        
-                        {/* User Photos as Polaroids */}
-                        <Polaroids photos={photos} treeState={treeState} />
-                    </Float>
-
-                    <Presents treeState={treeState} />
-
-                    <ContactShadows 
-                        resolution={1024} 
-                        scale={50} 
-                        blur={3} 
-                        opacity={0.4} 
-                        far={10} 
-                        color="#001005" 
-                    />
-                </group>
-            </CameraRig>
+            <ResponsiveTreeWrapper treeState={treeState} handPosition={handPosition} photos={photos} />
 
             <Stars radius={100} depth={50} count={3000} factor={4} saturation={0} fade speed={0.5} />
 

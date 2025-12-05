@@ -20,7 +20,7 @@ const GestureController: React.FC<GestureControllerProps> = ({ setTreeState, set
     let isMounted = true;
 
     const initMediaPipe = async () => {
-      // Prevent double-initialization in Strict Mode
+      // Prevent double-initialization
       if (recognizerRef.current) {
         if (isMounted) setIsLoaded(true);
         return;
@@ -33,30 +33,16 @@ const GestureController: React.FC<GestureControllerProps> = ({ setTreeState, set
 
         if (!isMounted) return;
 
-        // Try to use GPU first to avoid CPU logs and improve performance
-        try {
-            recognizerRef.current = await GestureRecognizer.createFromOptions(vision, {
-                baseOptions: {
-                  modelAssetPath:
-                    "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
-                  delegate: "GPU"
-                },
-                runningMode: "VIDEO",
-                numHands: 1
-            });
-        } catch (gpuError) {
-            console.warn("GPU acceleration unavailable, falling back to CPU.", gpuError);
-            // Fallback to CPU if GPU fails
-            recognizerRef.current = await GestureRecognizer.createFromOptions(vision, {
-                baseOptions: {
-                  modelAssetPath:
-                    "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
-                  delegate: "CPU"
-                },
-                runningMode: "VIDEO",
-                numHands: 1
-            });
-        }
+        // Simplify initialization: Let MediaPipe choose the best delegate automatically.
+        // This avoids explicit "GPU initialization failed" logs and ensures maximum compatibility.
+        // On many devices, this will default to CPU (XNNPACK), which is expected and stable.
+        recognizerRef.current = await GestureRecognizer.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
+            },
+            runningMode: "VIDEO",
+            numHands: 1
+        });
         
         if (isMounted) setIsLoaded(true);
       } catch (error) {
@@ -70,41 +56,6 @@ const GestureController: React.FC<GestureControllerProps> = ({ setTreeState, set
       isMounted = false;
     };
   }, []);
-
-  // Start Webcam
-  useEffect(() => {
-    if (!isLoaded || !videoRef.current) return;
-
-    let active = true;
-
-    const startWebcam = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } });
-        
-        if (active && videoRef.current) {
-          videoRef.current.srcObject = stream;
-          // Prediction loop will be triggered by onLoadedData in the video element
-        }
-      } catch (err) {
-        console.error("Error accessing webcam:", err);
-      }
-    };
-
-    startWebcam();
-
-    return () => {
-      active = false;
-      if (rafId.current) cancelAnimationFrame(rafId.current);
-      
-      if (videoRef.current && videoRef.current.srcObject) {
-         const stream = videoRef.current.srcObject as MediaStream;
-         if (stream.getTracks) {
-             stream.getTracks().forEach(track => track.stop());
-         }
-         videoRef.current.srcObject = null;
-      }
-    };
-  }, [isLoaded]);
 
   const predictWebcam = () => {
     const video = videoRef.current;
@@ -140,9 +91,7 @@ const GestureController: React.FC<GestureControllerProps> = ({ setTreeState, set
 
                 // 2. Handle Hand Position (Camera Perspective)
                 if (results.landmarks && results.landmarks.length > 0) {
-                    // Use the wrist (landmark 0) 
                     const wrist = results.landmarks[0][0]; 
-                    
                     const x = (wrist.x - 0.5) * 2; 
                     const y = -(wrist.y - 0.5) * 2; 
 
@@ -151,13 +100,56 @@ const GestureController: React.FC<GestureControllerProps> = ({ setTreeState, set
                     setHandPosition({ x: 0, y: 0, isActive: false });
                 }
             } catch (e) {
-                // Recognition error (often transient)
+                // Ignore transient recognition errors
             }
         }
     }
 
     rafId.current = requestAnimationFrame(predictWebcam);
   };
+
+  // Start Webcam & Prediction Loop
+  useEffect(() => {
+    if (!isLoaded || !videoRef.current) return;
+
+    let active = true;
+
+    const startWebcam = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } });
+        
+        if (active && videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      } catch (err) {
+        console.error("Error accessing webcam:", err);
+      }
+    };
+
+    startWebcam();
+    
+    // Safety check: ensure loop runs even if onLoadedData fired early
+    const checkReady = setInterval(() => {
+        if (videoRef.current && videoRef.current.readyState >= 2) {
+            if (!rafId.current) predictWebcam();
+            clearInterval(checkReady);
+        }
+    }, 500);
+
+    return () => {
+      active = false;
+      clearInterval(checkReady);
+      if (rafId.current) cancelAnimationFrame(rafId.current);
+      
+      if (videoRef.current && videoRef.current.srcObject) {
+         const stream = videoRef.current.srcObject as MediaStream;
+         if (stream.getTracks) {
+             stream.getTracks().forEach(track => track.stop());
+         }
+         videoRef.current.srcObject = null;
+      }
+    };
+  }, [isLoaded]);
 
   const handleVideoLoad = () => {
       if(videoRef.current) {
@@ -170,7 +162,7 @@ const GestureController: React.FC<GestureControllerProps> = ({ setTreeState, set
     <div className="absolute top-4 right-4 md:top-8 md:right-8 z-50 flex flex-col items-center pointer-events-none">
       <div className="relative group">
         
-        {/* Decorative Top Bow - Scaled for mobile */}
+        {/* Decorative Top Bow */}
         <div className="absolute -top-3 md:-top-5 left-1/2 transform -translate-x-1/2 z-20 w-12 md:w-20 text-[#FFD700] drop-shadow-md filter brightness-110">
            <svg viewBox="0 0 100 60" fill="currentColor">
               <path d="M50 30 C 65 10, 95 10, 95 30 C 95 50, 65 50, 50 35 C 35 50, 5 50, 5 30 C 5 10, 35 10, 50 30" />
@@ -178,8 +170,7 @@ const GestureController: React.FC<GestureControllerProps> = ({ setTreeState, set
            </svg>
         </div>
 
-        {/* Video Container Frame - Smaller on mobile */}
-        {/* Mobile: w-20 h-20 (80px), Desktop: w-32 h-32 (128px) */}
+        {/* Video Container Frame */}
         <div className="relative w-20 h-20 md:w-32 md:h-32 rounded-full border-[3px] md:border-[5px] border-[#FFD700] ring-[4px] md:ring-[6px] ring-[#043927] overflow-hidden shadow-[0_0_20px_rgba(255,215,0,0.3)] md:shadow-[0_0_40px_rgba(255,215,0,0.5)] bg-black">
           <video 
             ref={videoRef}
@@ -196,11 +187,11 @@ const GestureController: React.FC<GestureControllerProps> = ({ setTreeState, set
             </div>
           )}
           
-          {/* Inner Vignette for depth */}
+          {/* Inner Vignette */}
           <div className="absolute inset-0 rounded-full shadow-[inset_0_0_20px_rgba(0,0,0,0.8)] pointer-events-none"></div>
         </div>
 
-        {/* Decorative Bottom Holly - Scaled for mobile */}
+        {/* Decorative Bottom Holly */}
         <div className="absolute -bottom-1 -right-1 md:-bottom-2 md:-right-2 z-20 w-8 md:w-12 text-[#d4af37]">
             <svg viewBox="0 0 100 100" fill="currentColor">
                <circle cx="50" cy="50" r="10" fill="#8B0000" />
@@ -212,7 +203,7 @@ const GestureController: React.FC<GestureControllerProps> = ({ setTreeState, set
         </div>
       </div>
 
-      {/* Elegant Status Label - Compact on mobile */}
+      {/* Status Label */}
       <div className={`
         mt-2 md:mt-4 px-3 py-1 md:px-6 md:py-1.5 rounded-full border border-[#FFD700]/50 bg-[#043927]/80 backdrop-blur-md
         text-[#FFD700] text-[10px] md:text-xs font-serif tracking-[0.1em] md:tracking-[0.2em] uppercase shadow-lg

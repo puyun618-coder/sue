@@ -38,7 +38,7 @@ function App() {
       <Scene treeState={treeState} handPosition={handPosition} photos={photos} />
       <Overlay treeState={treeState} setTreeState={setTreeState} onUpload={handleUpload} photoCount={photos.length} />
       <GestureController setTreeState={setTreeState} setHandPosition={setHandPosition} />
-      <AudioPlayer gestureActive={handPosition.isActive} />
+      <AudioPlayer />
     </div>
   );
 }
