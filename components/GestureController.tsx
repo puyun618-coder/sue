@@ -33,9 +33,8 @@ const GestureController: React.FC<GestureControllerProps> = ({ setTreeState, set
 
         if (!isMounted) return;
 
-        // Simplify initialization: Let MediaPipe choose the best delegate automatically.
-        // This avoids explicit "GPU initialization failed" logs and ensures maximum compatibility.
-        // On many devices, this will default to CPU (XNNPACK), which is expected and stable.
+        // Use default delegate settings to allow the library to select the most stable backend (GPU/CPU)
+        // automatically. This prevents explicit fallback warnings in the console.
         recognizerRef.current = await GestureRecognizer.createFromOptions(vision, {
             baseOptions: {
               modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
